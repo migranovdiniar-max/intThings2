@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>IoT Монитор</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+
+<div class="container">
+    <div class="header">
+        <h1>⬡ IoT МОНИТОР</h1>
+        <p>Система мониторинга · Периодическая запись активна · MongoDB бэкенд</p>
+    </div>
+
+    <div class="content">
+        <!-- Карточка датчика температуры -->
+        <div class="card">
+            <h2>🌡 Датчик температуры</h2>
+            
+            <div id="heaterText" class="heater-status off">❄ НАГРЕВАТЕЛЬ ВЫКЛЮЧЕН</div>
+            
+            <div class="input-group">
+                <input type="number" id="tempInput" step="0.1" placeholder="Введите температуру...">
+                <button onclick="sendTemperature()">📤 ОТПРАВИТЬ</button>
+            </div>
+            
+            <div id="hint" class="hint">💡 Допустимый диапазон: −50 … 150 °C</div>
+            
+            <div class="last-state" id="lastTempState">
+                Последняя отправленная температура: —
+            </div>
+            
+            <div style="margin-top: 10px; font-size: 0.8em; color: #7f8c8d;">
+                🔄 После отправки температуры данные обновляются автоматически
+                <span class="auto-refresh-badge">авто-обновление</span>
+            </div>
+        </div>
+
+        <!-- Карточка нагревателя -->
+        <div class="card">
+            <h2>🔥 Нагреватель</h2>
+            
+            <div class="threshold">
+                Порог включения: <strong>25 °C</strong><br>
+                <small style="font-size: 0.8em;">(включается при температуре &lt; 25°C, выключается при ≥ 25°C)</small>
+            </div>
+            
+            <p>Текущий статус:</p>
+            <div class="temp-display" style="font-size: 1.8em;">
+                <strong id="heaterStatus">—</strong>
+            </div>
+            
+            <button class="btn-secondary" onclick="checkHeater()">🔄 ОБНОВИТЬ СТАТУС</button>
+            
+            <p style="margin-top: 15px; color: #7f8c8d; font-size: 0.85em;">
+                ⏱ Периодическая запись: каждые 30 сек
+            </p>
+        </div>
+
+        <!-- Панель лога -->
+        <div class="card log-panel">
+            <div class="log-header">
+                <h2 style="color: white;">📋 Лог событий</h2>
+                <button class="btn-secondary" onclick="clearLog()" style="padding: 8px 20px;">🗑 ОЧИСТИТЬ</button>
+            </div>
+            <div id="logBody" class="log-body">
+                <div class="log-entry log-info">
+                    <span class="log-time">[—]</span> 
+                    <span>Система инициализирована. Ожидание данных…</span>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    const logBody = document.getElementById('logBody');
+    const tempVal = document.getElementById('tempVal');
+    const heaterText = document.getElementById('heaterText');
+    const heaterStatus = document.getElementById('heaterStatus');
+    const hint = document.getElementById('hint');
+    const lastTempState = document.getElementById('lastTempState');
+    
+    // Храним последнее состояние нагревателя для отслеживания изменений
+    let lastHeaterState = null;
+    // Храним последнюю отправленную температуру
+    let lastSentTemperature = null;
+
+    function now() {
+        return new Date().toLocaleTimeString('ru-RU', {hour:'2-digit', minute:'2-digit', second:'2-digit'});
+    }
+
+    function addLog(msg, type = 'info') {
+        const entry = document.createElement('div');
+        entry.className = `log-entry log-${type}`;
+        entry.innerHTML = `<span class="log-time">[${now()}]</span> <span>${msg}</span>`;
+        logBody.prepend(entry);
+        
+        // Ограничиваем количество записей в логе до 100
+        while (logBody.children.length > 100) {
+            logBody.removeChild(logBody.lastChild);
+        }
+        
+        // Автоматическая прокрутка к новому сообщению
+        entry.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+
+    function clearLog() {
+        logBody.innerHTML = '';
+        addLog('Лог очищен', 'info');
+    }
+
+    async function sendTemperature() {
+        const val = document.getElementById('tempInput').value.trim();
+        if (val === '') {
+            hint.textContent = '⚠ Введите значение температуры';
+            hint.className = 'hint error';
+            return;
+        }
+
+        const tempValue = parseFloat(val);
+        
+        try {
+            // Сохраняем старый статус нагревателя до отправки
+            const oldHeaterState = lastHeaterState;
+            
+            const res = await fetch(`/connect?value=${encodeURIComponent(val)}`);
+            const data = await res.json();
+
+            if (data.error) {
+                hint.textContent = '✗ ' + data.error;
+                hint.className = 'hint error';
+                addLog(`❌ Ошибка валидации: ${data.error}`, 'err');
+                return;
+            }
+
+            hint.textContent = '✓ Данные приняты и записаны в MongoDB';
+            hint.className = 'hint success';
+            
+            // Сохраняем последнюю температуру
+            lastSentTemperature = tempValue;
+            lastTempState.innerHTML = `Последняя отправленная температура: ${tempValue.toFixed(1)} °C`;
+            
+            // Обновляем отображение температуры
+            tempVal.innerHTML = tempValue.toFixed(1);
+
+            // Получаем новый статус нагревателя
+            const hRes = await fetch('/connect_heater');
+            const hData = await hRes.json();
+            const newHeaterState = hData.heater_power;
+            
+            // Логируем отправку температуры
+            addLog(`🌡 Отправлена температура: ${tempValue.toFixed(1)} °C`, 'info');
+            
+            // Проверяем изменение состояния нагревателя
+            if (oldHeaterState !== null && oldHeaterState !== newHeaterState) {
+                if (newHeaterState === 'On') {
+                    addLog(`🔥 НАГРЕВАТЕЛЬ ВКЛЮЧИЛСЯ! (температура ${tempValue.toFixed(1)} °C < 25 °C)`, 'warning');
+                } else {
+                    addLog(`❄ НАГРЕВАТЕЛЬ ВЫКЛЮЧИЛСЯ! (температура ${tempValue.toFixed(1)} °C ≥ 25 °C)`, 'warning');
+                }
+            }
+            
+            updateHeater(newHeaterState);
+            
+            // Дополнительное уведомление о состоянии
+            if (newHeaterState === 'On') {
+                addLog(`✅ Нагреватель ВКЛЮЧЁН (температура ${tempValue.toFixed(1)} °C ниже порога 25 °C)`, 'ok');
+            } else {
+                addLog(`✅ Нагреватель ВЫКЛЮЧЕН (температура ${tempValue.toFixed(1)} °C достигла или превысила порог 25 °C)`, 'ok');
+            }
+
+            // Очищаем поле ввода
+            document.getElementById('tempInput').value = '';
+
+        } catch (e) {
+            addLog('❌ Ошибка соединения с сервером', 'err');
+            hint.textContent = '⚠ Ошибка соединения с сервером';
+            hint.className = 'hint error';
+        }
+    }
+
+    async function checkHeater() {
+        try {
+            const oldState = lastHeaterState;
+            const res = await fetch('/connect_heater');
+            const data = await res.json();
+            const newState = data.heater_power;
+            
+            updateHeater(newState);
+            
+            if (oldState !== null && oldState !== newState) {
+                if (newState === 'On') {
+                    addLog(`🔄 Нагреватель ВКЛЮЧИЛСЯ (автообновление)`, 'warning');
+                } else {
+                    addLog(`🔄 Нагреватель ВЫКЛЮЧИЛСЯ (автообновление)`, 'warning');
+                }
+            }
+            
+            addLog(`📊 Статус нагревателя: ${newState === 'On' ? 'Включён' : 'Выключен'}`, 'info');
+        } catch(e) {
+            addLog('❌ Ошибка получения статуса нагревателя', 'err');
+        }
+    }
+
+    function updateHeater(state) {
+        const oldState = lastHeaterState;
+        const on = state === 'On';
+        
+        // Обновляем визуальное отображение
+        heaterText.textContent = on ? '🔥 НАГРЕВАТЕЛЬ ВКЛЮЧЁН' : '❄ НАГРЕВАТЕЛЬ ВЫКЛЮЧЕН';
+        heaterText.className = `heater-status ${on ? 'on' : 'off'}`;
+        heaterStatus.textContent = on ? '🔥 Включён' : '❄ Выключен';
+        heaterStatus.style.color = on ? '#ff6b6b' : '#4ecdc4';
+        
+        // Сохраняем новое состояние
+        lastHeaterState = state;
+    }
+    
+    async function autoRefreshData() {
+        try {
+            const oldState = lastHeaterState;
+            const hRes = await fetch('/connect_heater');
+            const hData = await hRes.json();
+            const newState = hData.heater_power;
+            
+            // Проверяем изменение состояния
+            if (oldState !== null && oldState !== newState) {
+                if (newState === 'On') {
+                    addLog(`🔄 АВТООБНОВЛЕНИЕ: Нагреватель ВКЛЮЧИЛСЯ`, 'warning');
+                } else {
+                    addLog(`🔄 АВТООБНОВЛЕНИЕ: Нагреватель ВЫКЛЮЧИЛСЯ`, 'warning');
+                }
+            }
+            
+            updateHeater(newState);
+        } catch(e) {
+            // Не логируем ошибки автообновления, чтобы не засорять лог
+            console.log('Ошибка автообновления:', e);
+        }
+    }
+    
+    // Запускаем автоматическое обновление каждые 2 секунды
+    let autoUpdateInterval;
+    
+    function startAutoUpdate() {
+        if (autoUpdateInterval) {
+            clearInterval(autoUpdateInterval);
+        }
+        autoUpdateInterval = setInterval(autoRefreshData, 2000);
+    }
+    
+    // Запускаем автоматическое обновление при загрузке страницы
+    startAutoUpdate();
+
+    // Обработчик клавиши Enter
+    document.getElementById('tempInput').addEventListener('keydown', e => {
+        if (e.key === 'Enter') sendTemperature();
+    });
+    
+    // Получаем начальный статус при загрузке страницы
+    window.addEventListener('load', () => {
+        setTimeout(() => {
+            checkHeater();
+            addLog('✅ Система готова к работе. Мониторинг изменений активен', 'ok');
+            addLog('ℹ️ Нагреватель включается при температуре < 25°C и выключается при ≥ 25°C', 'info');
+        }, 500);
+    });
+</script>
+
+</body>
+</html>

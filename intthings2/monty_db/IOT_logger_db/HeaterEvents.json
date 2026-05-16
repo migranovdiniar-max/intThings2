@@ -1,0 +1,5 @@
+[
+{"timeStamp": "2026-05-06 11:50:16", "heaterState": "Off", "_id": {"$oid": "69fb00c825cdec2a8a421df9"}},
+{"timeStamp": "2026-05-06 11:50:23", "heaterState": "On", "_id": {"$oid": "69fb00cf25cdec2a8a421dfb"}},
+{"timeStamp": "2026-05-06 11:50:29", "heaterState": "Off", "_id": {"$oid": "69fb00d525cdec2a8a421dfd"}}
+]

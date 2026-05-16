@@ -1,0 +1,5 @@
+[
+{"timeStamp": "2026-05-06 11:50:16", "Temperature": 100.0, "unit": "C", "_id": {"$oid": "69fb00c825cdec2a8a421df8"}},
+{"timeStamp": "2026-05-06 11:50:23", "Temperature": 10.0, "unit": "C", "_id": {"$oid": "69fb00cf25cdec2a8a421dfa"}},
+{"timeStamp": "2026-05-06 11:50:29", "Temperature": 100.0, "unit": "C", "_id": {"$oid": "69fb00d525cdec2a8a421dfc"}}
+]
