@@ -3,23 +3,18 @@ import things
 
 app = Flask(__name__)
 
-# ── КОНФИГУРАЦИЯ БАЗЫ ДАННЫХ ──────────────────────────────────────────────────
-# Сюда вставляем твою строку от MongoDB Atlas.
-# Обязательно замени <твой_пароль> на реальный пароль базы данных!
+# КОНФИГУРАЦИЯ БАЗЫ ДАННЫХ 
 MONGO_URI = "mongodb+srv://migranovdiniar_db_user:bQc5ACn4mniSR4J@cluster0.pnbh6cy.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0"
 
-# ── объекты IoT-системы ───────────────────────────────────────────────────────
 temp_sensor = things.Sensor('C', 'temperature_sensor')
 heater      = things.Heater('Heater1', switch_on_temperature=25)
 
-# Передаем адрес базы данных в наш Логгер
 logger      = things.Logger('IOT_logger_db', mongo_uri=MONGO_URI)
 
-# Периодическая запись каждые 30 секунд (не зависит от действий пользователя)
 logger.start_periodic(temp_sensor, heater, interval_sec=30)
 
 
-# ── маршруты ─────────────────────────────────────────────────────────────────
+# маршруты 
 
 @app.route('/connect')
 def connect():

@@ -77,7 +77,6 @@
 
 <script>
     const logBody = document.getElementById('logBody');
-    const tempVal = document.getElementById('tempVal');
     const heaterText = document.getElementById('heaterText');
     const heaterStatus = document.getElementById('heaterStatus');
     const hint = document.getElementById('hint');
@@ -142,9 +141,6 @@
             // Сохраняем последнюю температуру
             lastSentTemperature = tempValue;
             lastTempState.innerHTML = `Последняя отправленная температура: ${tempValue.toFixed(1)} °C`;
-            
-            // Обновляем отображение температуры
-            tempVal.innerHTML = tempValue.toFixed(1);
 
             // Получаем новый статус нагревателя
             const hRes = await fetch('/connect_heater');
@@ -176,7 +172,8 @@
             document.getElementById('tempInput').value = '';
 
         } catch (e) {
-            addLog('❌ Ошибка соединения с сервером', 'err');
+            console.error('Ошибка:', e); // Выводим реальную ошибку в консоль
+            addLog('❌ Ошибка соединения с сервером: ' + e.message, 'err');
             hint.textContent = '⚠ Ошибка соединения с сервером';
             hint.className = 'hint error';
         }
@@ -201,12 +198,12 @@
             
             addLog(`📊 Статус нагревателя: ${newState === 'On' ? 'Включён' : 'Выключен'}`, 'info');
         } catch(e) {
-            addLog('❌ Ошибка получения статуса нагревателя', 'err');
+            console.error('Ошибка проверки нагревателя:', e);
+            addLog('❌ Ошибка получения статуса нагревателя: ' + e.message, 'err');
         }
     }
 
     function updateHeater(state) {
-        const oldState = lastHeaterState;
         const on = state === 'On';
         
         // Обновляем визуальное отображение

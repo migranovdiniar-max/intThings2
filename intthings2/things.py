@@ -4,9 +4,7 @@ import datetime
 import threading
 
 
-# ─────────────────────────────────────────────
-#  Abstract base
-# ─────────────────────────────────────────────
+
 class Thing(abc.ABC):
     def __init__(self, name):
         self.name = name
@@ -19,9 +17,6 @@ class Thing(abc.ABC):
         pass
 
 
-# ─────────────────────────────────────────────
-#  Sensor
-# ─────────────────────────────────────────────
 class Sensor(Thing):
     MIN_VALUE = -50.0
     MAX_VALUE = 150.0
@@ -33,7 +28,7 @@ class Sensor(Thing):
         self.power = 'on'
         print('[Sensor] Created')
 
-    # ---------- validation ----------
+
     def validate(self, raw_value):
         """Return (float_value, error_message_or_None)."""
         try:
@@ -55,9 +50,6 @@ class Sensor(Thing):
         return {'power': self.power}
 
 
-# ─────────────────────────────────────────────
-#  Heater
-# ─────────────────────────────────────────────
 class Heater(Thing):
     def __init__(self, name, switch_on_temperature):
         super().__init__(name)
@@ -72,15 +64,7 @@ class Heater(Thing):
         self.power = 'On' if temperature < self.switch_on_temperature else 'Off'
 
 
-# ─────────────────────────────────────────────
-#  Logger
-# ─────────────────────────────────────────────
 class Logger:
-    """
-    Writes sensor data to MongoDB.
-    """
-
-    # ── validation bounds (mirror Sensor, kept here for defence-in-depth) ──
     TEMP_MIN = -50.0
     TEMP_MAX = 150.0
 
@@ -95,14 +79,12 @@ class Logger:
         self._timer: threading.Timer | None = None
         print(f'[Logger] Connected to DB: {db_name}')
 
-    # ── internal helpers ─────────────────────────────────────────────────
 
     @staticmethod
     def _now() -> str:
         return datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
 
     def _validate_temperature(self, value):
-        """Return (float_value, error_str_or_None)."""
         try:
             val = float(value)
         except (ValueError, TypeError):
@@ -122,10 +104,7 @@ class Logger:
         })
         print(f'[Logger][ERROR] {source}: {message}')
 
-    # ── public API ───────────────────────────────────────────────────────
-
     def insert_temperature(self, new_data):
-        """Validate and persist a temperature reading (skip duplicates)."""
         val, err = self._validate_temperature(new_data)
         if err:
             self._log_error('insert_temperature', err)
@@ -145,7 +124,6 @@ class Logger:
         return result
 
     def insert_heater_event(self, new_state: str):
-        """Persist heater state changes (On/Off)."""
         allowed = {'On', 'Off'}
         if new_state not in allowed:
             self._log_error(
@@ -166,14 +144,9 @@ class Logger:
         print(f'[Logger] Heater event logged: {new_state}')
         return result
 
-    # ── periodic background logging ──────────────────────────────────────
 
     def start_periodic(self, sensor: 'Sensor', heater: 'Heater',
                        interval_sec: float = 10.0):
-        """
-        Launch a background thread that logs sensor + heater data
-        every `interval_sec` seconds, regardless of HTTP activity.
-        """
         def _tick():
             self.insert_temperature(sensor.value)
             self.insert_heater_event(heater.power)
