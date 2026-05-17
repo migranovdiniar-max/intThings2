@@ -1,0 +1,453 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>IoT Монитор с Аналитикой</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+
+<div class="container">
+    <div class="header">
+        <h1>⬡ IoT МОНИТОР С АНАЛИТИКОЙ</h1>
+        <p>Система мониторинга · Анализ данных · Адаптивное управление · MongoDB бэкенд</p>
+    </div>
+
+    <div class="content">
+        <!-- Карточка датчика температуры -->
+        <div class="card">
+            <h2>🌡 Датчик температуры</h2>
+            
+            <div id="heaterText" class="heater-status off">❄ НАГРЕВАТЕЛЬ ВЫКЛЮЧЕН</div>
+            
+            <div class="input-group">
+                <input type="number" id="tempInput" step="0.1" placeholder="Введите температуру...">
+                <button onclick="sendTemperature()">📤 ОТПРАВИТЬ</button>
+            </div>
+            
+            <div id="hint" class="hint">💡 Допустимый диапазон: −50 … 150 °C</div>
+            
+            <div class="last-state" id="lastTempState">
+                Последняя отправленная температура: —
+            </div>
+            
+            <div id="anomalyAlert" style="display: none; margin-top: 10px; padding: 8px; background: #ff6b6b; color: white; border-radius: 5px;">
+                ⚠ Обнаружены аномалии в данных!
+            </div>
+        </div>
+
+        <!-- Карточка нагревателя -->
+        <div class="card">
+            <h2>🔥 Нагреватель</h2>
+            
+            <div class="threshold" id="thresholdInfo">
+                Порог включения: <strong>25 °C</strong><br>
+                <small>Режим: стандартный</small>
+            </div>
+            
+            <p>Текущий статус:</p>
+            <div class="temp-display" style="font-size: 1.8em;">
+                <strong id="heaterStatus">—</strong>
+            </div>
+            
+            <button class="btn-secondary" onclick="checkHeater()">🔄 ОБНОВИТЬ СТАТУС</button>
+        </div>
+
+        <!-- Карточка статистики -->
+        <div class="card">
+            <h2>📊 Статистический анализ</h2>
+            <div id="statsBody">
+                <p>Загрузка статистики...</p>
+            </div>
+            <button class="btn-secondary" onclick="loadStatistics()">📈 ОБНОВИТЬ СТАТИСТИКУ</button>
+        </div>
+
+        <!-- Карточка предиктивной аналитики -->
+        <div class="card">
+            <h2>🔮 Предсказание</h2>
+            <div id="predictionBody">
+                <p>Загрузка предсказаний...</p>
+            </div>
+            <button class="btn-secondary" onclick="loadPrediction()">🔍 ОБНОВИТЬ ПРОГНОЗ</button>
+        </div>
+
+        <!-- Карточка качества данных -->
+        <div class="card">
+            <h2>✅ Качество данных</h2>
+            <div id="qualityBody">
+                <p>Загрузка оценки качества...</p>
+            </div>
+            <button class="btn-secondary" onclick="loadQuality()">📋 ПРОВЕРИТЬ КАЧЕСТВО</button>
+        </div>
+
+        <!-- Карточка адаптивного управления -->
+        <div class="card">
+            <h2>⚙️ Адаптивное управление</h2>
+            <div id="adaptiveBody">
+                <p>Статус: проверка...</p>
+            </div>
+            <button class="btn-secondary" onclick="adjustThreshold()">🔧 АВТО-НАСТРОЙКА ПОРОГА</button>
+            <button class="btn-secondary" onclick="resetThreshold()" style="margin-top: 5px; background: #95a5a6;">↩ СБРОС НА СТАНДАРТ</button>
+        </div>
+
+        <!-- Панель лога -->
+        <div class="card log-panel">
+            <div class="log-header">
+                <h2 style="color: white;">📋 Лог событий</h2>
+                <button class="btn-secondary" onclick="clearLog()" style="padding: 8px 20px;">🗑 ОЧИСТИТЬ</button>
+            </div>
+            <div id="logBody" class="log-body">
+                <div class="log-entry log-info">
+                    <span class="log-time">[—]</span> 
+                    <span>Система инициализирована. Ожидание данных…</span>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    const logBody = document.getElementById('logBody');
+    const heaterText = document.getElementById('heaterText');
+    const heaterStatus = document.getElementById('heaterStatus');
+    const hint = document.getElementById('hint');
+    const lastTempState = document.getElementById('lastTempState');
+    const thresholdInfo = document.getElementById('thresholdInfo');
+    const anomalyAlert = document.getElementById('anomalyAlert');
+    const statsBody = document.getElementById('statsBody');
+    const predictionBody = document.getElementById('predictionBody');
+    const qualityBody = document.getElementById('qualityBody');
+    const adaptiveBody = document.getElementById('adaptiveBody');
+    
+    let lastHeaterState = null;
+    let lastSentTemperature = null;
+
+    function now() {
+        return new Date().toLocaleTimeString('ru-RU', {hour:'2-digit', minute:'2-digit', second:'2-digit'});
+    }
+
+    function addLog(msg, type = 'info') {
+        const entry = document.createElement('div');
+        entry.className = `log-entry log-${type}`;
+        entry.innerHTML = `<span class="log-time">[${now()}]</span> <span>${msg}</span>`;
+        logBody.prepend(entry);
+        
+        while (logBody.children.length > 100) {
+            logBody.removeChild(logBody.lastChild);
+        }
+        
+        entry.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+
+    function clearLog() {
+        logBody.innerHTML = '';
+        addLog('Лог очищен', 'info');
+    }
+
+    async function sendTemperature() {
+        const val = document.getElementById('tempInput').value.trim();
+        if (val === '') {
+            hint.textContent = '⚠ Введите значение температуры';
+            hint.className = 'hint error';
+            return;
+        }
+
+        const tempValue = parseFloat(val);
+        
+        try {
+            const oldHeaterState = lastHeaterState;
+            
+            const res = await fetch(`/connect?value=${encodeURIComponent(val)}`);
+            const data = await res.json();
+
+            if (data.error) {
+                hint.textContent = '✗ ' + data.error;
+                hint.className = 'hint error';
+                addLog(`❌ Ошибка валидации: ${data.error}`, 'err');
+                return;
+            }
+
+            hint.textContent = '✓ Данные приняты и записаны в MongoDB';
+            hint.className = 'hint success';
+            
+            lastSentTemperature = tempValue;
+            lastTempState.innerHTML = `Последняя отправленная температура: ${tempValue.toFixed(1)} °C`;
+
+            const hRes = await fetch('/connect_heater');
+            const hData = await hRes.json();
+            
+            addLog(`🌡 Отправлена температура: ${tempValue.toFixed(1)} °C`, 'info');
+            
+            if (oldHeaterState !== null && oldHeaterState !== hData.heater_power) {
+                if (hData.heater_power === 'On') {
+                    addLog(`🔥 НАГРЕВАТЕЛЬ ВКЛЮЧИЛСЯ!`, 'warning');
+                } else {
+                    addLog(`❄ НАГРЕВАТЕЛЬ ВЫКЛЮЧИЛСЯ!`, 'warning');
+                }
+            }
+            
+            updateHeaterUI(hData);
+            
+            // Проверка на аномалии
+            if (hData.anomaly_mode) {
+                anomalyAlert.style.display = 'block';
+                addLog('⚠ Система обнаружила аномалии в данных!', 'warning');
+            } else {
+                anomalyAlert.style.display = 'none';
+            }
+            
+            // Автоматически обновляем аналитику
+            setTimeout(() => {
+                loadStatistics();
+                loadPrediction();
+                loadQuality();
+            }, 500);
+
+            document.getElementById('tempInput').value = '';
+
+        } catch (e) {
+            console.error('Ошибка:', e);
+            addLog('❌ Ошибка соединения с сервером: ' + e.message, 'err');
+            hint.textContent = '⚠ Ошибка соединения с сервером';
+            hint.className = 'hint error';
+        }
+    }
+
+    async function checkHeater() {
+        try {
+            const res = await fetch('/connect_heater');
+            const data = await res.json();
+            updateHeaterUI(data);
+            addLog(`📊 Статус нагревателя обновлен`, 'info');
+        } catch(e) {
+            console.error('Ошибка:', e);
+            addLog('❌ Ошибка получения статуса нагревателя', 'err');
+        }
+    }
+
+    function updateHeaterUI(data) {
+        const state = data.heater_power;
+        const on = state === 'On';
+        
+        heaterText.textContent = on ? '🔥 НАГРЕВАТЕЛЬ ВКЛЮЧЁН' : '❄ НАГРЕВАТЕЛЬ ВЫКЛЮЧЕН';
+        heaterText.className = `heater-status ${on ? 'on' : 'off'}`;
+        heaterStatus.textContent = on ? '🔥 Включён' : '❄ Выключен';
+        heaterStatus.style.color = on ? '#ff6b6b' : '#4ecdc4';
+        
+        // Обновление информации о пороге
+        const threshold = data.threshold || 25;
+        const mode = data.adaptive_mode ? 'адаптивный' : 'стандартный';
+        thresholdInfo.innerHTML = `
+            Порог включения: <strong>${threshold} °C</strong><br>
+            <small>Режим: ${mode}</small>
+        `;
+        
+        lastHeaterState = state;
+    }
+
+    // ═══════════════ ФУНКЦИИ АНАЛИТИКИ ═══════════════════════════════════════
+
+    async function loadStatistics() {
+        try {
+            const res = await fetch('/analysis/statistics');
+            const data = await res.json();
+            
+            if (data.error) {
+                statsBody.innerHTML = `<p style="color: #e74c3c;">${data.error}</p>`;
+                return;
+            }
+            
+            statsBody.innerHTML = `
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                    <div><strong>📊 Количество:</strong> ${data.count}</div>
+                    <div><strong>📈 Среднее:</strong> ${data.mean} °C</div>
+                    <div><strong>📉 Медиана:</strong> ${data.median} °C</div>
+                    <div><strong>⬆ Максимум:</strong> ${data.max} °C</div>
+                    <div><strong>⬇ Минимум:</strong> ${data.min} °C</div>
+                    <div><strong>📏 Размах:</strong> ${data.range} °C</div>
+                    <div><strong>σ Отклонение:</strong> ${data.std} °C</div>
+                </div>
+            `;
+            
+            addLog(`📊 Статистика обновлена: среднее=${data.mean}°C, σ=${data.std}°C`, 'info');
+        } catch(e) {
+            console.error('Ошибка загрузки статистики:', e);
+        }
+    }
+
+    async function loadPrediction() {
+        try {
+            const res = await fetch('/analysis/predict');
+            const data = await res.json();
+            
+            if (data.error) {
+                predictionBody.innerHTML = `<p style="color: #e74c3c;">${data.error}</p>`;
+                return;
+            }
+            
+            const trendEmoji = data.trend === 'rising' ? '📈' : data.trend === 'falling' ? '📉' : '➡';
+            const trendText = data.trend === 'rising' ? 'рост' : data.trend === 'falling' ? 'падение' : 'стабильно';
+            
+            predictionBody.innerHTML = `
+                <p><strong>🔮 Предсказанное значение:</strong> ${data.predicted_next} °C</p>
+                <p><strong>📊 Тренд:</strong> ${trendEmoji} ${trendText} (изменение: ${data.avg_change} °C)</p>
+                <p><strong>🎯 Достоверность:</strong> ${data.confidence}</p>
+                <p><strong>📌 Последнее значение:</strong> ${data.last_value} °C</p>
+            `;
+            
+            addLog(`🔮 Прогноз: след. значение=${data.predicted_next}°C, тренд=${trendText}`, 'info');
+        } catch(e) {
+            console.error('Ошибка загрузки предсказания:', e);
+        }
+    }
+
+    async function loadQuality() {
+        try {
+            const res = await fetch('/analysis/quality');
+            const data = await res.json();
+            
+            if (data.status === 'error') {
+                qualityBody.innerHTML = `<p style="color: #e74c3c;">${data.message}</p>`;
+                return;
+            }
+            
+            const ratingColor = data.quality_score >= 80 ? '#27ae60' : 
+                               data.quality_score >= 60 ? '#f39c12' : 
+                               data.quality_score >= 40 ? '#e67e22' : '#e74c3c';
+            
+            let issuesHtml = '';
+            if (data.issues.length > 0) {
+                issuesHtml = '<ul style="margin-top: 10px; color: #e74c3c;">' + 
+                    data.issues.map(i => `<li>⚠ ${i}</li>`).join('') + '</ul>';
+            } else {
+                issuesHtml = '<p style="color: #27ae60;">✅ Проблем не обнаружено</p>';
+            }
+            
+            qualityBody.innerHTML = `
+                <p><strong>Оценка качества:</strong> 
+                    <span style="color: ${ratingColor}; font-size: 1.5em; font-weight: bold;">
+                        ${data.quality_score}/100
+                    </span>
+                </p>
+                <p><strong>Рейтинг:</strong> ${data.rating}</p>
+                ${issuesHtml}
+            `;
+            
+            addLog(`✅ Качество данных: ${data.rating} (${data.quality_score}/100)`, 
+                   data.quality_score >= 60 ? 'ok' : 'warning');
+        } catch(e) {
+            console.error('Ошибка загрузки качества:', e);
+        }
+    }
+
+    async function adjustThreshold() {
+        try {
+            const res = await fetch('/analysis/adjust-threshold');
+            const data = await res.json();
+            
+            if (data.status === 'adjusted') {
+                adaptiveBody.innerHTML = `
+                    <p style="color: #27ae60;">✅ Порог изменен!</p>
+                    <p><strong>Старый порог:</strong> ${data.old_threshold} °C</p>
+                    <p><strong>Новый порог:</strong> ${data.new_threshold} °C</p>
+                    <p><strong>Причина:</strong> ${data.reason}</p>
+                    <p><strong>Средняя температура:</strong> ${data.current_mean} °C</p>
+                `;
+                addLog(`🔧 Адаптивный порог изменен: ${data.old_threshold}°C → ${data.new_threshold}°C`, 'warning');
+                
+                // Обновляем статус нагревателя
+                setTimeout(() => checkHeater(), 500);
+            } else if (data.status === 'unchanged') {
+                adaptiveBody.innerHTML = `
+                    <p style="color: #3498db;">ℹ️ ${data.message}</p>
+                    <p><strong>Текущий порог:</strong> ${data.current_threshold} °C</p>
+                    <p><strong>Средняя температура:</strong> ${data.current_mean} °C</p>
+                `;
+                addLog(`ℹ️ Порог не требует корректировки (среднее=${data.current_mean}°C)`, 'info');
+            } else {
+                adaptiveBody.innerHTML = `<p style="color: #e74c3c;">${data.message}</p>`;
+            }
+        } catch(e) {
+            console.error('Ошибка регулировки порога:', e);
+            addLog('❌ Ошибка авто-настройки порога', 'err');
+        }
+    }
+
+    async function resetThreshold() {
+        try {
+            const res = await fetch('/analysis/reset-threshold');
+            const data = await res.json();
+            
+            adaptiveBody.innerHTML = `
+                <p style="color: #27ae60;">✅ Порог сброшен к стандартному значению</p>
+                <p><strong>Стандартный порог:</strong> ${data.threshold} °C</p>
+            `;
+            addLog(`↩ Порог сброшен к стандартному: ${data.threshold}°C`, 'info');
+            
+            setTimeout(() => checkHeater(), 500);
+        } catch(e) {
+            console.error('Ошибка сброса порога:', e);
+            addLog('❌ Ошибка сброса порога', 'err');
+        }
+    }
+    
+    // ═══════════════ АВТООБНОВЛЕНИЕ ═════════════════════════════════════════
+
+    async function autoRefreshData() {
+        try {
+            const oldState = lastHeaterState;
+            const hRes = await fetch('/connect_heater');
+            const hData = await hRes.json();
+            
+            if (oldState !== null && oldState !== hData.heater_power) {
+                if (hData.heater_power === 'On') {
+                    addLog(`🔄 АВТО: Нагреватель ВКЛЮЧИЛСЯ`, 'warning');
+                } else {
+                    addLog(`🔄 АВТО: Нагреватель ВЫКЛЮЧИЛСЯ`, 'warning');
+                }
+            }
+            
+            updateHeaterUI(hData);
+            
+            if (hData.anomaly_mode) {
+                anomalyAlert.style.display = 'block';
+            } else {
+                anomalyAlert.style.display = 'none';
+            }
+        } catch(e) {
+            console.log('Ошибка автообновления:', e);
+        }
+    }
+    
+    let autoUpdateInterval;
+    
+    function startAutoUpdate() {
+        if (autoUpdateInterval) {
+            clearInterval(autoUpdateInterval);
+        }
+        autoUpdateInterval = setInterval(autoRefreshData, 2000);
+    }
+    
+    startAutoUpdate();
+
+    document.getElementById('tempInput').addEventListener('keydown', e => {
+        if (e.key === 'Enter') sendTemperature();
+    });
+    
+    window.addEventListener('load', () => {
+        setTimeout(() => {
+            checkHeater();
+            loadStatistics();
+            loadPrediction();
+            loadQuality();
+            
+            addLog('✅ Система готова к работе. Аналитика активна', 'ok');
+            addLog('ℹ️ Адаптивный порог изменяется на основе анализа данных', 'info');
+            addLog('🔍 Периодический анализ запущен (каждые 60 сек)', 'info');
+        }, 500);
+    });
+</script>
+
+</body>
+</html>
