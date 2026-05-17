@@ -1,11 +1,13 @@
 from flask import Flask, request, render_template, jsonify
 import things
 import os
+from dotenv import load_dotenv
 
 app = Flask(__name__)
+load_dotenv()
 
 # КОНФИГУРАЦИЯ БАЗЫ ДАННЫХ 
-MONGO_URI = os.environ.get('MONGO_URI', 'mongodb://localhost:27017/')
+MONGO_URI = os.environ.get('MONGO_URI')
 
 temp_sensor = things.Sensor('C', 'temperature_sensor')
 heater      = things.Heater('Heater1', switch_on_temperature=25)
